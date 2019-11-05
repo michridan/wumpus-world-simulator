@@ -5,20 +5,15 @@
 
 #include "Action.h"
 #include "Percept.h"
+#include "Location.h"
+#include "Orientation.h"
 #include <stack>
 #include <algorithm> // For std::count
 
-enum Direction{NORTH, EAST, SOUTH, WEST};
-
-struct Point
+struct PitInfo
 {
-	int x;
-	int y;
-
-	bool operator==(Point p)
-	{
-		return (p.x == x) && (p.y == y);
-	}
+	Location loc;
+	double prob; // Probability that location contains a pit
 };
 
 class Agent
@@ -35,24 +30,29 @@ private:
 	bool has_gold;
 	bool wumpus_dead;
 	bool wumpus_known;
-	Point pos;
-	Point wumpus_pos;
-	Direction orientation;
+	Location pos;
+	Location wumpus_pos;
+	Orientation orientation;
 	int games_played;
 	int size;
 	bool bumped = false;
-	vector<Point> targets;
-	vector<Point> stenches;
-	vector<Point> gold_path;
-	vector<Point> safe_spots;
-	vector<Point> visited;
+	vector<Location> targets;
+	vector<Location> stenches;
+	vector<Location> breezes;
+	vector<Location> gold_path;
+	vector<Location> safe_spots;
+	vector<Location> visited;
+	vector<PitInfo> known;
+	vector<PitInfo> frontier;
+	vector<vector<double>> pitMap;
 
-	Point Move(Direction d);
-	Direction Turn(Action a);
-	Action GoToTarget(Point t);
+	Location Move(Orientation o);
+	Orientation Turn(Action a);
+	Action GoToTarget(Location t);
 	void UpdateBoard(Percept p);
 	bool FindWumpus();
-	vector<Point> adjacent_tiles(Point t);
+	vector<Location> adjacent_tiles(Location t);
+	void printBoard();
 };
 
 #endif // AGENT_H

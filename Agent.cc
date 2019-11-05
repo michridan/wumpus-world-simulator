@@ -1,13 +1,20 @@
 // Agent.cc
 
 #include <iostream>
+#include <iomanip>
 #include "Agent.h"
 
 using namespace std;
 
 Agent::Agent ()
 {
-	size = 1;
+	pitMap = {
+		{0, .2, .2, .2, .2},
+		{.2, .2, .2, .2, .2},
+		{.2, .2, .2, .2, .2},
+		{.2, .2, .2, .2, .2},
+		{.2, .2, .2, .2, .2}};
+	size = 5;
 	safe_spots.push_back({1,1});
 	targets.push_back({1,1});
 	games_played = 0;
@@ -22,8 +29,8 @@ void Agent::Initialize ()
 	has_arrow = true;
 	has_gold = false;
 	wumpus_dead = false;
-	orientation = EAST;
-	pos.x = pos.y = 1;
+	orientation = RIGHT;
+	pos.X = pos.Y = 1;
 }
 
 Action Agent::Process (Percept& percept)
@@ -39,7 +46,7 @@ Action Agent::Process (Percept& percept)
 
 		action = GRAB;
 	}
-	else if (has_gold && pos.x == 1 && pos.y == 1)
+	else if (has_gold && pos.X == 1 && pos.Y == 1)
 	{
 		games_played++;
 		targets = gold_path;
@@ -64,48 +71,51 @@ void Agent::GameOver (int score)
 	games_played++;
 }
 
-Point Agent::Move (Direction d)
+Location Agent::Move (Orientation o)
 {
-	Point p = pos;
-	switch(d)
+	Location p = pos;
+	switch(o)
 	{
-		case NORTH: p.y++;
+		case UP: p.Y++;
 			break;
-		case SOUTH: p.y--;
+		case DOWN: p.Y--;
 			break;
-		case EAST: p.x++;
+		case RIGHT: p.X++;
 			break;
-		case WEST: p.x--;
+		case LEFT: p.X--;
 	}
 
 
-	if(p.x < 1 || p.y < 1)
+	if(p.X < 1 || p.Y < 1)
 		return pos;
-	else if(bumped && (p.x > size || p.y > size))
+	else if(bumped && (p.X > size || p.Y > size))
 		return pos;
 
 	return p;
 }
 
-Direction Agent::Turn(Action a)
+Orientation Agent::Turn(Action a)
 {
 	if(a == TURNLEFT)
-		return static_cast<Direction> ((orientation + 3) % 4);
+		return static_cast<Orientation> ((orientation + 1) % 4);
 	else if(a == TURNRIGHT)
-		return static_cast<Direction> ((orientation + 1) % 4);
+		return static_cast<Orientation> ((orientation + 3) % 4);
 	else return orientation;
 }
 
-int Manhattan(Point a, Point b)
+int Manhattan(Location a, Location b)
 {
-	return abs(a.x - b.x) + abs(a.y - b.y);
+	return abs(a.X - b.X) + abs(a.Y - b.Y);
 }
 
-Action Agent::GoToTarget(Point t)
+Action Agent::GoToTarget(Location t)
 {
 	int d = Manhattan(t, pos);
-	cout << "t: (" << t.x << ", " << t.y << ") #safe: " << safe_spots.size() << endl;
-	cout << "p: (" << pos.x << ", " << pos.y << ")" << endl;
+	cout << "t: (" << t.X << ", " << t.Y << ") #safe: " << safe_spots.size() << endl;
+	cout << "p: (" << pos.X << ", " << pos.Y << ")" << endl;
+	cout << "o: ";
+	PrintOrientation(orientation);
+	cout << endl;
 	
 	if(Manhattan(t, Move(orientation)) < d && count(safe_spots.begin(), safe_spots.end(), Move(orientation)) > 0)
 	{
@@ -124,11 +134,11 @@ Action Agent::GoToTarget(Point t)
 	}
 }
 
-void remove_invalid(vector<Point> *v, int max)
+void remove_invalid(vector<Location> *v, int max)
 {
-	for(vector<Point>::iterator i = v->begin(); i < v->end();)
+	for(vector<Location>::iterator i = v->begin(); i < v->end();)
 	{
-		if(i->x > max || i->y > max)
+		if(i->X > max || i->Y > max)
 		{
 			cout << "erased!" << endl;
 			i = v->erase(i);
@@ -142,20 +152,21 @@ void remove_invalid(vector<Point> *v, int max)
 
 void Agent::UpdateBoard(Percept p)
 {
+	printBoard();
 	if (p.Bump)
 	{
 		bumped = true;
 
 		// Reset position & Update Boundaries
-		if(orientation % 2 == 1) // Meaning EAST
+		if(orientation == RIGHT)
 		{
-			pos.x--;
-			size = pos.x;
+			pos.X--;
+			size = pos.X;
 		}
 		else
 		{
-			pos.y--;
-			size = pos.y;
+			pos.X--;
+			size = pos.Y;
 		}
 
 		remove_invalid(&targets, size);
@@ -180,10 +191,10 @@ void Agent::UpdateBoard(Percept p)
 	{
 		for(int i = 0; i < 4; i++)
 		{
-			Point temp = Move(static_cast<Direction>(i));
+			Location temp = Move(static_cast<Orientation>(i));
 			if(count(safe_spots.begin(), safe_spots.end(), temp) == 0)
 			{
-				cout << temp.x << ", " << temp.y << " safe!" << endl;
+				cout << temp.X << ", " << temp.Y << " safe!" << endl;
 				safe_spots.push_back(temp);
 				targets.push_back(temp);
 			}
@@ -198,10 +209,10 @@ void Agent::UpdateBoard(Percept p)
 	{
 		for(int i = 0; i < 4; i++)
 		{
-			Point temp = Move(static_cast<Direction>(i));
+			Location temp = Move(static_cast<Orientation>(i));
 			if(!(temp == wumpus_pos) && (count(safe_spots.begin(), safe_spots.end(), temp) == 0))
 			{
-				cout << temp.x << ", " << temp.y << " safe!" << endl;
+				cout << temp.X << ", " << temp.Y << " safe!" << endl;
 				safe_spots.push_back(temp);
 				targets.push_back(temp);
 			}
@@ -217,14 +228,14 @@ void Agent::UpdateBoard(Percept p)
 
 bool Agent::FindWumpus()
 {
-	vector<Point> suspects, neighbors;
+	vector<Location> suspects, neighbors;
 
 	// Exit if too few stenches
 	if(stenches.size() < 2)
 		return false;
 
 	// Find all potential Wumpus locations
-	Point cur;
+	Location cur;
 
 	neighbors = adjacent_tiles(pos);
 
@@ -234,7 +245,7 @@ bool Agent::FindWumpus()
 		cur = neighbors.back();
 		neighbors.pop_back();
 		
-		for(Point stench: stenches)
+		for(Location stench: stenches)
 		{
 			if(Manhattan(cur, stench) == 1)
 				x++;
@@ -246,11 +257,11 @@ bool Agent::FindWumpus()
 	}
 
 	// Narrow down list
-	for(vector<Point>::iterator i = suspects.begin(); i < suspects.end(); i++)
+	for(vector<Location>::iterator i = suspects.begin(); i < suspects.end(); i++)
 	{
 		cur = *i;
 
-		for(Point t: adjacent_tiles(cur))
+		for(Location t: adjacent_tiles(cur))
 		{
 			if(count(visited.begin(), visited.end(), pos) > 0 && count(stenches.begin(), stenches.end(), t))
 			{
@@ -269,26 +280,39 @@ bool Agent::FindWumpus()
 	return false;
 }
 
-vector<Point> Agent::adjacent_tiles(Point t)
+vector<Location> Agent::adjacent_tiles(Location t)
 {
-	vector<Point> neighbors;
+	vector<Location> neighbors;
 
-	if(t.x + 1 < size)
+	if(t.X + 1 < size)
 	{
-		neighbors.push_back({t.x + 1, t.y});
+		neighbors.push_back({t.X + 1, t.Y});
 	}
-	if(t.x - 1 >= 1)
+	if(t.X - 1 >= 1)
 	{
-		neighbors.push_back({t.x - 1, t.y});
+		neighbors.push_back({t.X - 1, t.Y});
 	}
-	if(t.y + 1 < size)
+	if(t.Y + 1 < size)
 	{
-		neighbors.push_back({t.x, t.y + 1});
+		neighbors.push_back({t.X, t.Y + 1});
 	}
-	if(t.y - 1 >= 1)
+	if(t.Y - 1 >= 1)
 	{
-		neighbors.push_back({t.x, t.y - 1});
+		neighbors.push_back({t.X, t.Y - 1});
 	}
 
 	return neighbors;
+}
+
+void Agent::printBoard()
+{
+	cout << "P(pit):" << endl;
+	for(vector<vector<double>>::reverse_iterator i = pitMap.rbegin(); i != pitMap.rend(); i++)
+	{
+		for(double prob: *i)
+		{
+			cout << ' ' << fixed << setprecision(2) << prob;
+		}
+		cout << endl;
+	}
 }
