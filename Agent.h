@@ -10,10 +10,17 @@
 #include <stack>
 #include <algorithm> // For std::count
 
-struct PitInfo
+/*
+Helper Class to make handling the probability storing a bit easier
+*/
+class ProbMap
 {
-	Location loc;
-	double prob; // Probability that location contains a pit
+public:
+	const double get(Location l);
+	void set(Location l, double p);
+	void printBoard();
+
+	vector<vector<double>> board;
 };
 
 class Agent
@@ -33,26 +40,32 @@ private:
 	Location pos;
 	Location wumpus_pos;
 	Orientation orientation;
-	int games_played;
+	bool learned;
 	int size;
 	bool bumped = false;
 	vector<Location> targets;
+	vector<Location> possible_wumpuses;
 	vector<Location> stenches;
 	vector<Location> breezes;
 	vector<Location> gold_path;
-	vector<Location> safe_spots;
-	vector<Location> visited;
-	vector<PitInfo> known;
-	vector<PitInfo> frontier;
-	vector<vector<double>> pitMap;
+	vector<Location> known;
+	vector<Location> frontier;
+	ProbMap pitMap;
 
 	Location Move(Orientation o);
 	Orientation Turn(Action a);
 	Action GoToTarget(Location t);
 	void UpdateBoard(Percept p);
-	bool FindWumpus();
+	void calculateProbs();
+	double validateBoard(ProbMap map);
+	vector<Location> FindWumpus();
 	vector<Location> adjacent_tiles(Location t);
-	void printBoard();
 };
+
+int Manhattan(Location a, Location b);
+void remove_invalid(vector<Location> *v, int max);
+void printLocs(string name, vector<Location> v);
+void removeLoc(Location l, vector<Location> *v);
+bool existsIn(Location l, vector<Location> v);
 
 #endif // AGENT_H

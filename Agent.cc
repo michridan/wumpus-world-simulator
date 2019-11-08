@@ -2,22 +2,24 @@
 
 #include <iostream>
 #include <iomanip>
+#include <cmath> // for pow()
 #include "Agent.h"
 
 using namespace std;
 
+// Agent Member Functions
+
 Agent::Agent ()
 {
-	pitMap = {
+	pitMap.board = {
 		{0, .2, .2, .2, .2},
 		{.2, .2, .2, .2, .2},
 		{.2, .2, .2, .2, .2},
 		{.2, .2, .2, .2, .2},
 		{.2, .2, .2, .2, .2}};
 	size = 5;
-	safe_spots.push_back({1,1});
 	targets.push_back({1,1});
-	games_played = 0;
+	learned = false;
 }
 
 Agent::~Agent ()
@@ -39,6 +41,15 @@ Action Agent::Process (Percept& percept)
 
 	UpdateBoard(percept);
 
+	printLocs("Known:", known);
+	printLocs("Frontier:", frontier);
+	printLocs("Breeze:", breezes);
+	printLocs("GoldPath:", gold_path);
+	printLocs("Targets:", targets);
+	cout << endl;
+	calculateProbs();
+	pitMap.printBoard();
+
 	if(percept.Glitter)
 	{
 		has_gold = true;
@@ -48,7 +59,7 @@ Action Agent::Process (Percept& percept)
 	}
 	else if (has_gold && pos.X == 1 && pos.Y == 1)
 	{
-		games_played++;
+		learned == true;
 		targets = gold_path;
 		reverse(targets.begin(), targets.end());
 		action = CLIMB;
@@ -68,7 +79,9 @@ Action Agent::Process (Percept& percept)
 
 void Agent::GameOver (int score)
 {
-	games_played++;
+	known.push_back(pos);
+	pitMap.set(pos, 1);
+	frontier.erase(find(frontier.begin(), frontier.end(), pos)); // make better?
 }
 
 Location Agent::Move (Orientation o)
@@ -85,10 +98,9 @@ Location Agent::Move (Orientation o)
 		case LEFT: p.X--;
 	}
 
-
 	if(p.X < 1 || p.Y < 1)
 		return pos;
-	else if(bumped && (p.X > size || p.Y > size))
+	else if((p.X > size || p.Y > size))
 		return pos;
 
 	return p;
@@ -103,21 +115,16 @@ Orientation Agent::Turn(Action a)
 	else return orientation;
 }
 
-int Manhattan(Location a, Location b)
-{
-	return abs(a.X - b.X) + abs(a.Y - b.Y);
-}
-
 Action Agent::GoToTarget(Location t)
 {
 	int d = Manhattan(t, pos);
-	cout << "t: (" << t.X << ", " << t.Y << ") #safe: " << safe_spots.size() << endl;
-	cout << "p: (" << pos.X << ", " << pos.Y << ")" << endl;
-	cout << "o: ";
+	cout << "Target: (" << t.X << ", " << t.Y << ")" << endl;
+	cout << "Position: (" << pos.X << ", " << pos.Y << ")" << endl;
+	cout << "Orientation: ";
 	PrintOrientation(orientation);
 	cout << endl;
 	
-	if(Manhattan(t, Move(orientation)) < d && count(safe_spots.begin(), safe_spots.end(), Move(orientation)) > 0)
+	if(Manhattan(t, Move(orientation)) < d)
 	{
 		pos = Move(orientation);
 		return GOFORWARD;
@@ -134,25 +141,8 @@ Action Agent::GoToTarget(Location t)
 	}
 }
 
-void remove_invalid(vector<Location> *v, int max)
-{
-	for(vector<Location>::iterator i = v->begin(); i < v->end();)
-	{
-		if(i->X > max || i->Y > max)
-		{
-			cout << "erased!" << endl;
-			i = v->erase(i);
-		}
-		else
-		{
-			i++;
-		}
-	}
-}
-
 void Agent::UpdateBoard(Percept p)
 {
-	printBoard();
 	if (p.Bump)
 	{
 		bumped = true;
@@ -171,68 +161,120 @@ void Agent::UpdateBoard(Percept p)
 
 		remove_invalid(&targets, size);
 		remove_invalid(&gold_path, size);
-		remove_invalid(&safe_spots, size);
+		remove_invalid(&frontier, size);
 		return;
 	}
-	if(count(visited.begin(), visited.end(), pos) == 1)
+
+	if(p.Breeze && !existsIn(pos, breezes))
 	{
-		if(games_played == 0 && !has_gold)
+		breezes.push_back(pos);
+	}
+
+	if(existsIn(pos, known))
+	{
+		if(!learned && !has_gold)
 		{
-			while(count(gold_path.begin(), gold_path.end(), pos) == 1)
+			while(existsIn(pos, gold_path))
 			{
 				gold_path.pop_back();
 			}
-			gold_path.push_back(pos);
 		}
-		return;
 	}
 
-	if(!p.Stench)
+	for(int i = 0; i < 4; i++)
 	{
-		for(int i = 0; i < 4; i++)
+		Location temp = Move(static_cast<Orientation>(i));
+		if(!existsIn(temp, frontier) && !existsIn(temp, known))
 		{
-			Location temp = Move(static_cast<Orientation>(i));
-			if(count(safe_spots.begin(), safe_spots.end(), temp) == 0)
-			{
-				cout << temp.X << ", " << temp.Y << " safe!" << endl;
-				safe_spots.push_back(temp);
-				targets.push_back(temp);
-			}
+			frontier.push_back(temp);
+			targets.push_back(temp);
 		}
 	}
-	else if(!wumpus_known)
+
+	if(p.Scream)
+	{
+		possible_wumpuses.clear();
+		possible_wumpuses.push_back(Move(orientation));
+		wumpus_dead = true;
+	}
+
+	if(p.Stench && possible_wumpuses.size() != 1)
 	{
 		stenches.push_back(pos);
-		wumpus_known = FindWumpus();
-	}
-	else
-	{
-		for(int i = 0; i < 4; i++)
-		{
-			Location temp = Move(static_cast<Orientation>(i));
-			if(!(temp == wumpus_pos) && (count(safe_spots.begin(), safe_spots.end(), temp) == 0))
-			{
-				cout << temp.X << ", " << temp.Y << " safe!" << endl;
-				safe_spots.push_back(temp);
-				targets.push_back(temp);
-			}
-		}
+		possible_wumpuses = FindWumpus();
 	}
 
-	visited.push_back(pos);
-	if(games_played == 0 && !has_gold)
+	if(!existsIn(pos, known))
+	{
+		known.push_back(pos);
+		removeLoc(pos, &frontier);
+		pitMap.set(pos, 0);
+	}
+
+	if(!learned && !has_gold)
 	{
 		gold_path.push_back(pos);
 	}
 }
 
-bool Agent::FindWumpus()
+void Agent::calculateProbs()
+{
+	// use binary encoding to get combos?
+	ProbMap qMap;
+	qMap.board = pitMap.board;
+	for(Location query: frontier)
+	{
+		double ptrue = 0, pfalse = 0;
+		vector<Location> qknown = known, qfrontier = frontier;
+		qknown.push_back(query);
+		removeLoc(query, &qfrontier);
+		cout << "Query: (" << query.X << ',' << query.Y << ')' << endl;
+		printLocs("  Frontier': ", qfrontier); 
+
+		for(int C = 0; C < pow(2, qfrontier.size()); C++) // Cycle through all possible true/false combinations
+		{
+			double pC = 1;
+			for(int i = 0; i < qfrontier.size(); i++)
+			{
+				double p = (C >> i) % 2; // gives the probability for frontier[i] in this combination 
+				qMap.set(qfrontier[i], p);
+				pC *= (p - 0.8); // .2 if true, -.8 if false, will get absolute value later
+			}
+			pC = abs(pC);
+			qMap.set(query, 1);
+			ptrue += pC * validateBoard(qMap);
+			qMap.set(query, 0);
+			pfalse += pC * validateBoard(qMap);
+		}
+		ptrue *= 0.2;
+		pfalse *= 0.8;
+		ptrue /= (ptrue + pfalse);
+		cout << "  P(true) = " << ptrue << endl;
+		pitMap.set(query, ptrue);
+	}
+	cout << endl;
+}
+
+// Returns 1 if pit information is consistent with breezes, 0 otherwise
+double Agent::validateBoard(ProbMap map)
+{
+	for(Location b: known)
+	{
+		double sum = 0;
+		for(Location p: adjacent_tiles(b))
+		{
+			sum += map.get(p);
+		}
+
+		if((sum == 0 && existsIn(b, breezes)) || (sum != 0 && !existsIn(b, breezes)))
+			return 0;
+	}
+	return 1;
+}
+
+vector<Location> Agent::FindWumpus()
 {
 	vector<Location> suspects, neighbors;
-
-	// Exit if too few stenches
-	if(stenches.size() < 2)
-		return false;
 
 	// Find all potential Wumpus locations
 	Location cur;
@@ -263,7 +305,7 @@ bool Agent::FindWumpus()
 
 		for(Location t: adjacent_tiles(cur))
 		{
-			if(count(visited.begin(), visited.end(), pos) > 0 && count(stenches.begin(), stenches.end(), t))
+			if(existsIn(t, known) && !existsIn(t, stenches))
 			{
 				i = suspects.erase(i);
 				break;
@@ -271,13 +313,14 @@ bool Agent::FindWumpus()
 		}
 	}
 
+	printLocs("Possible Wumpus Locations:", suspects);
+
 	if(suspects.size() == 1)
 	{
 		wumpus_pos = suspects[0];
-		return true;
 	}
 
-	return false;
+	return suspects;
 }
 
 vector<Location> Agent::adjacent_tiles(Location t)
@@ -304,10 +347,22 @@ vector<Location> Agent::adjacent_tiles(Location t)
 	return neighbors;
 }
 
-void Agent::printBoard()
+// ProbMap Member Functions
+
+const double ProbMap::get(Location l)
+{
+	return board[l.Y - 1][l.X - 1];
+}
+
+void ProbMap::set(Location l, double p)
+{
+	board[l.Y - 1][l.X - 1] = p;
+}
+
+void ProbMap::printBoard()
 {
 	cout << "P(pit):" << endl;
-	for(vector<vector<double>>::reverse_iterator i = pitMap.rbegin(); i != pitMap.rend(); i++)
+	for(vector<vector<double>>::reverse_iterator i = board.rbegin(); i != board.rend(); i++)
 	{
 		for(double prob: *i)
 		{
@@ -315,4 +370,48 @@ void Agent::printBoard()
 		}
 		cout << endl;
 	}
+}
+
+// Utility functions
+
+int Manhattan(Location a, Location b)
+{
+	return abs(a.X - b.X) + abs(a.Y - b.Y);
+}
+
+void remove_invalid(vector<Location> *v, int max)
+{
+	for(vector<Location>::iterator i = v->begin(); i < v->end();)
+	{
+		if(i->X > max || i->Y > max)
+		{
+			cout << "erased!" << endl;
+			i = v->erase(i);
+		}
+		else
+		{
+			i++;
+		}
+	}
+}
+
+void printLocs(string name, vector<Location> v)
+{
+	cout << name;
+	for(Location l: v)
+	{
+		cout << " (" << l.X << "," << l.Y << ')';
+	}
+
+	cout << endl;
+}
+
+void removeLoc(Location l, vector<Location> *v)
+{
+	v->erase(find(v->begin(), v->end(), l));
+}
+
+bool existsIn(Location l, vector<Location> v)
+{
+	return (count(v.begin(), v.end(), l) > 0);
 }
